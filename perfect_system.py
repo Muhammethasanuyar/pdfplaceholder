@@ -2132,7 +2132,7 @@ async def analyze_pdf_perfect(file: UploadFile = File(...)):
             doc.close()
             return AnalyzeResponse(
                 success=False,
-                message="Bu PDF'de {{}} formatında placeholder bulunamadı.",
+                message="Bu PDF'de {{}} (süslü parantez) formatında placeholder bulunamadı.",
                 session_id=session_id,
                 placeholders=[]
             )
@@ -2910,7 +2910,7 @@ async def serve_perfect_frontend():
                 <div class="upload-area" @click="$refs.fileInput.click()">
                     <div class="upload-icon">🎯</div>
                     <div class="upload-text">PDF Analizi</div>
-                    <div class="upload-subtext">{{}} formatında placeholder'lar içeren PDF dosyanızı sürükleyip bırakın veya tıklayarak seçin</div>
+                    <div class="upload-subtext"><span v-pre>{{}}</span> formatında placeholder'lar içeren PDF dosyanızı sürükleyip bırakın veya tıklayarak seçin</div>
                     <input type="file" 
                            ref="fileInput" 
                            class="file-input" 
@@ -3212,7 +3212,7 @@ async def serve_perfect_frontend():
             
             <!-- No Placeholders -->
             <div v-if="sessionId && placeholders.length === 0" class="error-message">
-                Bu PDF'de {{}} formatında placeholder bulunamadı.
+                Bu PDF'de <span v-pre>{{}}</span> formatında placeholder bulunamadı.
             </div>
         </div>
     </div>
