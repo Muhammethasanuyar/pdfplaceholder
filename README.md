@@ -1,4 +1,5 @@
 # PDF Placeholder Filler
+# PDF Placeholder Filler
 
 Türkçe PDF belgelerindeki `{{placeholder}}` alanlarını otomatik olarak tespit edip dolduran web uygulaması. PyMuPDF (fitz) kullanarak hem metin katmanlı hem de taranmış (OCR) PDF'leri destekler.
 
@@ -112,6 +113,28 @@ PDF'deki placeholder'ları analiz eder (eski endpoint).
 ```
 
 ### `/ai_detect`
+
+  ## Deploy to Render (Docker)
+
+  1. Commit and push this repo to GitHub.
+  2. In Render, create a new Web Service:
+    - Service type: Docker
+    - Repository: this repo
+    - Branch: main
+    - Root directory: /
+    - Auto-Deploy: Yes
+    - Instance: Starter or above (512MB+ RAM recommended)
+  3. Environment
+    - Add environment variable PORT=10000 (Render sets this automatically; Dockerfile respects it)
+    - Optional: AI_API_KEY, OCR_LANGS (tur+eng)
+  4. Expose HTTP port
+    - Render will route to $PORT automatically
+  5. Health check path
+    - /
+  6. Start Command
+    - Not needed (Dockerfile CMD runs uvicorn and binds $PORT)
+
+  After deploy, you’ll get a live URL like: https://your-service.onrender.com
 Gelişmiş placeholder tespiti (OCR + metin katmanı + formlar).
 
 **POST** `multipart/form-data`
