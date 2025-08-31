@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pdfplaceholder
+    env: docker
+    repo: https://github.com/Muhammethasanuyar/pdfplaceholder
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OCR_LANGS
+        value: tur+eng
+      # - key: AI_API_KEY
+      #   sync: false  # set in dashboard if needed
