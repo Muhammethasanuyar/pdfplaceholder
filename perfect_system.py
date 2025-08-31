@@ -3235,7 +3235,7 @@ async def serve_perfect_frontend():
                     errorMessage: '',
                     diagnostics: [],
                     previewUrl: null,
-                    apiBase: 'http://localhost:8011',
+                    apiBase: (typeof window !== 'undefined' ? window.location.origin : ''),
                     fontAnalysis: null,  // Font analizi için yeni state
                     selectedFont: null,   // Seçili font
                     selectedColor: '#000000',  // Varsayılan siyah renk
