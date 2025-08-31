@@ -45,10 +45,10 @@ pip install -r requirements.txt
 
 4. Uygulamayı çalıştırın:
 ```bash
-python main.py
+python perfect_system.py
 ```
 
-5. Tarayıcıda açın: `http://localhost:8000`
+5. Tarayıcıda açın: `http://localhost:8011`
 
 ### Docker ile Kurulum
 

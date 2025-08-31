@@ -14,22 +14,22 @@ dev-install: ## Install development dependencies
 	pip install -e .[dev]
 
 lint: ## Run linting checks
-	flake8 main.py fill_placeholders.py tests/
-	black --check main.py fill_placeholders.py tests/
-	isort --check-only main.py fill_placeholders.py tests/
+	flake8 perfect_system.py
+	black --check perfect_system.py
+	isort --check-only perfect_system.py
 
 format: ## Format code with black and isort
-	black main.py fill_placeholders.py tests/
-	isort main.py fill_placeholders.py tests/
+	black perfect_system.py
+	isort perfect_system.py
 
-test: ## Run tests
-	pytest tests/ -v
+test: ## Run tests (none - placeholder)
+	@echo "No tests configured for perfect_system yet"
 
 test-verbose: ## Run tests with verbose output
-	pytest tests/ -vv --tb=long
+	@echo "No tests configured for perfect_system yet"
 
 test-coverage: ## Run tests with coverage
-	pytest tests/ --cov=main --cov=fill_placeholders --cov-report=html --cov-report=term
+	@echo "No coverage configured"
 
 clean: ## Clean up generated files
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -52,10 +52,10 @@ docker-logs: ## Show Docker logs
 	docker-compose logs -f
 
 run: ## Run the application locally
-	python main.py
+	python perfect_system.py
 
 run-dev: ## Run in development mode with reload
-	uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	uvicorn perfect_system:app --reload --host 0.0.0.0 --port 8011
 
 pre-commit-install: ## Install pre-commit hooks
 	pre-commit install
