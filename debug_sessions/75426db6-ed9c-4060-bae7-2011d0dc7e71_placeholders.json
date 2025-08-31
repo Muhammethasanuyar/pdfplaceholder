@@ -1,0 +1,46 @@
+[
+  {
+    "key": "Ad",
+    "text": "{{Ad}}",
+    "page": 0,
+    "rect": [
+      196.8026580810547,
+      404.5584411621094,
+      283.7449035644531,
+      439.68682861328125
+    ],
+    "color": [
+      0,
+      0,
+      0
+    ],
+    "font": "Montserrat-Bold",
+    "font_size": 28.81739616394043,
+    "font_flags": 20,
+    "is_bold": true,
+    "is_italic": false,
+    "suggestion": "Example_Ad"
+  },
+  {
+    "key": "Soyad",
+    "text": "{{Soyad}}",
+    "page": 0,
+    "rect": [
+      522.7843627929688,
+      401.229248046875,
+      659.2926025390625,
+      436.3576354980469
+    ],
+    "color": [
+      0,
+      0,
+      0
+    ],
+    "font": "Montserrat-Bold",
+    "font_size": 28.81739616394043,
+    "font_flags": 20,
+    "is_bold": true,
+    "is_italic": false,
+    "suggestion": "Example_Soyad"
+  }
+]
