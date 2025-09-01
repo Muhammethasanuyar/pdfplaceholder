@@ -2178,19 +2178,84 @@ async def analyze_pdf_perfect(file: UploadFile = File(...)):
 
 
 @app.get("/api/preview/{session_id}")
-async def preview_pdf_perfect(session_id: str, cleaned: bool = False):
+async def preview_pdf_perfect(session_id: str, cleaned: bool = False, preview: bool = False):
     """PDF önizleme"""
     if session_id not in SESSIONS:
         raise HTTPException(status_code=404, detail="Session bulunamadı")
     
     session = SESSIONS[session_id]
-    file_path = session["cleaned_file"] if cleaned else session["original_file"]
+    # Öncelik sırası: preview > cleaned > original
+    if preview and session.get("preview_file") and os.path.exists(session.get("preview_file")):
+        file_path = session.get("preview_file")
+    else:
+        file_path = session["cleaned_file"] if cleaned else session["original_file"]
     
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="PDF dosyası bulunamadı")
     
     print(f"👁️ Serving {'cleaned' if cleaned else 'original'} PDF: {file_path}")
     return FileResponse(file_path, media_type="application/pdf")
+
+
+@app.post("/api/preview_filled")
+async def preview_filled_pdf_perfect(request: FillRequest):
+    """PDF canlı önizleme üretimi (indirimsiz). Dosyayı geçici olarak yazar ve /api/preview ile servis eder."""
+    try:
+        session_id = request.session_id
+        if session_id not in SESSIONS:
+            raise HTTPException(status_code=404, detail="Session bulunamadı")
+
+        session = SESSIONS[session_id]
+        placeholders = session.get("placeholders", [])
+        cleaned_file = session.get("cleaned_file")
+        font_analysis = session.get("font_analysis", {})
+        if not cleaned_file or not os.path.exists(cleaned_file):
+            raise HTTPException(status_code=404, detail="Temizlenmiş PDF bulunamadı")
+
+        values = request.values or {}
+        font_choice = request.font_choice
+        text_color = request.text_color
+        font_size_mode = request.font_size_mode or "auto"
+        fixed_font_size = request.fixed_font_size
+        min_font_size = request.min_font_size
+        max_font_size = request.max_font_size
+        allow_overflow = request.allow_overflow or False
+        text_alignments = request.text_alignments or {}
+        alignment_offsets = request.alignment_offsets or {}
+        alignment_offsets_y = request.alignment_offsets_y or {}
+        per_placeholder_font_sizes = request.per_placeholder_font_sizes or {}
+        font_style = (request.font_style or "normal").lower()
+        per_placeholder_styles = request.per_placeholder_styles or {}
+
+        doc = fitz.open(cleaned_file)
+        try:
+            doc, diagnostics = insert_natural_text_with_analysis(
+                doc, placeholders, values, font_analysis, font_choice, text_color,
+                font_size_mode, fixed_font_size, min_font_size, max_font_size,
+                allow_overflow, text_alignments, alignment_offsets, per_placeholder_font_sizes,
+                alignment_offsets_y, font_style, per_placeholder_styles
+            )
+            preview_path = SESSION_DIR / f"{session_id}_preview.pdf"
+            doc.save(str(preview_path))
+            session["preview_file"] = str(preview_path)
+            session["last_diagnostics"] = diagnostics
+        finally:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+        # İframe için kullanılacak URL'yi döndür
+        return JSONResponse({
+            "success": True,
+            "preview_url": f"/api/preview/{session_id}?preview=true",
+            "diagnostics": session.get("last_diagnostics") if isinstance(session.get("last_diagnostics"), list) else []
+        })
+    except Exception as e:
+        print(f"❌ Preview filling error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Önizleme hatası: {str(e)}")
 
 
 @app.post("/api/fill")
@@ -3300,7 +3365,11 @@ async def serve_perfect_frontend():
                             { hex: '#4c1d95', name: 'İndigo' },
                             { hex: '#701a75', name: 'Fuşya' },
                             { hex: '#166534', name: 'Zümrüt Yeşili' }
-                        ]
+                        ],
+                        // Live preview handling
+                        livePreviewEnabled: true,
+                        _previewTimer: null,
+                        _lastPreviewPayload: null
                     };
                 },
                 computed: {
@@ -3333,6 +3402,62 @@ async def serve_perfect_frontend():
                     }
                 },
                 methods: {
+                    _debouncePreview: function() {
+                        var self = this;
+                        if (!self.livePreviewEnabled || !self.sessionId) return;
+                        if (self._previewTimer) {
+                            clearTimeout(self._previewTimer);
+                            self._previewTimer = null;
+                        }
+                        self._previewTimer = setTimeout(function(){ self._runLivePreview(); }, 400);
+                    },
+                    _runLivePreview: function() {
+                        var self = this;
+                        if (!self.sessionId) return;
+                        try {
+                            // Prepare per-placeholder sizes cleaned numbers
+                            var cleaned = {};
+                            var sizes = self.perPlaceholderFontSizes || {};
+                            for (var k in sizes) {
+                                if (!Object.prototype.hasOwnProperty.call(sizes, k)) continue;
+                                var v = sizes[k];
+                                if (v !== undefined && v !== null && !isNaN(v)) cleaned[k] = v;
+                            }
+                            function hexToRgb(hex) {
+                                var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                                if (!m) return [0,0,0];
+                                return [ parseInt(m[1],16)/255, parseInt(m[2],16)/255, parseInt(m[3],16)/255 ];
+                            }
+                            var payload = {
+                                session_id: self.sessionId,
+                                values: self.formValues,
+                                font_choice: self.selectedFont,
+                                text_color: hexToRgb(self.selectedColor),
+                                font_size_mode: self.fontSizeMode,
+                                fixed_font_size: self.fontSizeMode === 'fixed' ? self.fixedFontSize : null,
+                                min_font_size: self.fontSizeMode === 'min_max' ? self.minFontSize : null,
+                                max_font_size: self.fontSizeMode === 'min_max' ? self.maxFontSize : null,
+                                allow_overflow: self.allowOverflow,
+                                text_alignments: self.textAlignments,
+                                alignment_offsets: self.alignmentOffsets,
+                                alignment_offsets_y: self.alignmentOffsetsY,
+                                per_placeholder_font_sizes: cleaned,
+                                font_style: self.globalStyle,
+                                per_placeholder_styles: self.perPlaceholderStyles
+                            };
+                            self._lastPreviewPayload = payload;
+                            axios.post(self.apiBase + '/api/preview_filled', payload)
+                                .then(function(resp){
+                                    var d = (resp && resp.data) ? resp.data : {};
+                                    if (d && d.success && d.preview_url) {
+                                        // Bust cache
+                                        self.previewUrl = self.apiBase + d.preview_url + '&t=' + Date.now();
+                                        self.diagnostics = d.diagnostics || [];
+                                    }
+                                })
+                                .catch(function(err){ /* swallow preview errors to avoid UX disruption */ });
+                        } catch (e) { /* ignore */ }
+                    },
                     getColorName: function(hex) {
                         try {
                             var list = this.colorPresets || [];
@@ -3455,6 +3580,7 @@ async def serve_perfect_frontend():
                                 this.formValues[p.key] = val;
                             }
                         }
+                        this._debouncePreview();
                     },
                     fillPdf: function() {
                         var self = this;
@@ -3504,6 +3630,40 @@ async def serve_perfect_frontend():
                             console.error('Fill error:', error);
                             self.errorMessage = '🎯 Doldurma hatası: ' + self.getErrorDetail(error);
                         }).then(function(){ self.isLoading = false; });
+                    }
+                }
+                ,
+                watch: {
+                    formValues: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
+                    },
+                    selectedFont: function(){ this._debouncePreview(); },
+                    selectedColor: function(){ this._debouncePreview(); },
+                    fontSizeMode: function(){ this._debouncePreview(); },
+                    fixedFontSize: function(){ this._debouncePreview(); },
+                    minFontSize: function(){ this._debouncePreview(); },
+                    maxFontSize: function(){ this._debouncePreview(); },
+                    allowOverflow: function(){ this._debouncePreview(); },
+                    textAlignments: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
+                    },
+                    alignmentOffsets: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
+                    },
+                    alignmentOffsetsY: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
+                    },
+                    perPlaceholderFontSizes: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
+                    },
+                    perPlaceholderStyles: {
+                        handler: function(){ this._debouncePreview(); },
+                        deep: true
                     }
                 }
             });
