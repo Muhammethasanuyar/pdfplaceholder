@@ -2396,14 +2396,14 @@ async def health_perfect():
 async def serve_perfect_frontend():
     """Frontend servis"""
     try:
-        html_content = """
+            html_content = r"""
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🎯 PDF Placeholder Sistemi</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <style>
         * {
@@ -3013,9 +3013,9 @@ async def serve_perfect_frontend():
                         </div>
                         
                         <div style="text-align: center; margin-top: 2rem;">
-                            <button @click="fillPdf" 
-                                    :disabled="isLoading || !hasValues" 
-                                    class="btn">
+                <button @click="fillPdf" 
+                    :disabled="isLoading || !(placeholders && placeholders.length)" 
+                    class="btn">
                                 ✨ Doldur
                             </button>
                             
@@ -3076,7 +3076,7 @@ async def serve_perfect_frontend():
                                 </div>
                             </div>
                             <small style="color: #666; margin-top: 0.5rem; display: block;">
-                                ✅ {{ colorPresets.find(c => c.hex === selectedColor)?.name || 'Özel renk' }} ({{ selectedColor }})
+                                ✅ {{ getColorName(selectedColor) }} ({{ selectedColor }})
                             </small>
                         </div>
                         
@@ -3199,7 +3199,7 @@ async def serve_perfect_frontend():
                                 <td style="padding: 6px; border-bottom: 1px solid #eee;">{{ row.style }}</td>
                                 <td style="padding: 6px; border-bottom: 1px solid #eee;">{{ row.font_used }}</td>
                                 <td style="padding: 6px; border-bottom: 1px solid #eee; white-space: pre-wrap;">{{ (row.candidates_tried || []).join('\n') }}</td>
-                                <td style="padding: 6px; border-bottom: 1px solid #eee;">{{ row.fs?.toFixed ? row.fs.toFixed(1) : row.fs }}</td>
+                                <td style="padding: 6px; border-bottom: 1px solid #eee;">{{ fsDisplay(row.fs) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -3217,297 +3217,302 @@ async def serve_perfect_frontend():
         </div>
     </div>
 
-    <script>
-        const { createApp } = Vue;
-
-        createApp({
-            data() {
-                return {
-                    isDragOver: false,
-                    isLoading: false,
-                    sessionId: null,
-                    placeholders: [],
-                    formValues: {},
-                    textAlignments: {},  // Placeholder hizalama seçimleri
-                    alignmentOffsets: {}, // Manuel offset değerleri (px)
-                    alignmentOffsetsY: {}, // Dikey offset değerleri (px)
-                    successMessage: '',
-                    errorMessage: '',
-                    diagnostics: [],
-                    previewUrl: null,
-                    apiBase: (typeof window !== 'undefined' ? window.location.origin : ''),
-                    fontAnalysis: null,  // Font analizi için yeni state
-                    selectedFont: null,   // Seçili font
-                    selectedColor: '#000000',  // Varsayılan siyah renk
-                    fontSizeMode: 'auto',     // Font boyutu modu
-                    fixedFontSize: 12,        // Sabit font boyutu
-                    minFontSize: 8,           // Minimum font boyutu
-                    maxFontSize: 24,          // Maksimum font boyutu
-                    allowOverflow: false,     // Alan taşma izni
-                    perPlaceholderFontSizes: {}, // Placeholder bazında font boyutu map'i
-                    perPlaceholderStyles: {}, // Placeholder bazında stil map'i
-                    globalStyle: 'normal',
-                    colorPresets: [
-                        // Temel renkler
-                        { hex: '#000000', name: 'Siyah' },
-                        { hex: '#ffffff', name: 'Beyaz' },
-                        { hex: '#1f2937', name: 'Koyu Gri' },
-                        { hex: '#374151', name: 'Gri' },
-                        { hex: '#6b7280', name: 'Açık Gri' },
-                        { hex: '#9ca3af', name: 'Çok Açık Gri' },
-                        
-                        // Mavi tonları
-                        { hex: '#1e40af', name: 'Koyu Mavi' },
-                        { hex: '#0e7afe', name: 'Mavi' },
-                        { hex: '#3b82f6', name: 'Parlak Mavi' },
-                        { hex: '#60a5fa', name: 'Açık Mavi' },
-                        { hex: '#93c5fd', name: 'Çok Açık Mavi' },
-                        { hex: '#1e3a8a', name: 'Lacivert' },
-                        
-                        // Yeşil tonları
-                        { hex: '#15803d', name: 'Koyu Yeşil' },
-                        { hex: '#059669', name: 'Yeşil' },
-                        { hex: '#22c55e', name: 'Parlak Yeşil' },
-                        { hex: '#10b981', name: 'Açık Yeşil' },
-                        { hex: '#34d399', name: 'Çok Açık Yeşil' },
-                        { hex: '#065f46', name: 'Orman Yeşili' },
-                        
-                        // Kırmızı tonları
-                        { hex: '#991b1b', name: 'Koyu Kırmızı' },
-                        { hex: '#dc2626', name: 'Kırmızı' },
-                        { hex: '#ef4444', name: 'Parlak Kırmızı' },
-                        { hex: '#f87171', name: 'Açık Kırmızı' },
-                        { hex: '#fca5a5', name: 'Çok Açık Kırmızı' },
-                        
-                        // Mor tonları
-                        { hex: '#581c87', name: 'Koyu Mor' },
-                        { hex: '#7c3aed', name: 'Mor' },
-                        { hex: '#8b5cf6', name: 'Açık Mor' },
-                        { hex: '#a78bfa', name: 'Çok Açık Mor' },
-                        { hex: '#c084fc', name: 'Lila' },
-                        
-                        // Turuncu tonları
-                        { hex: '#c2410c', name: 'Koyu Turuncu' },
-                        { hex: '#ea580c', name: 'Turuncu' },
-                        { hex: '#f97316', name: 'Parlak Turuncu' },
-                        { hex: '#fb923c', name: 'Açık Turuncu' },
-                        
-                        // Sarı tonları
-                        { hex: '#a16207', name: 'Koyu Sarı' },
-                        { hex: '#ca8a04', name: 'Sarı' },
-                        { hex: '#eab308', name: 'Parlak Sarı' },
-                        { hex: '#facc15', name: 'Açık Sarı' },
-                        { hex: '#fde047', name: 'Çok Açık Sarı' },
-                        
-                        // Pembe tonları
-                        { hex: '#be185d', name: 'Koyu Pembe' },
-                        { hex: '#db2777', name: 'Pembe' },
-                        { hex: '#ec4899', name: 'Parlak Pembe' },
-                        { hex: '#f472b6', name: 'Açık Pembe' },
-                        
-                        // Cyan/Teal tonları
-                        { hex: '#0d9488', name: 'Teal' },
-                        { hex: '#14b8a6', name: 'Parlak Teal' },
-                        { hex: '#06b6d4', name: 'Cyan' },
-                        { hex: '#0891b2', name: 'Koyu Cyan' },
-                        
-                        // Kahverengi tonları
-                        { hex: '#92400e', name: 'Koyu Kahverengi' },
-                        { hex: '#a3621b', name: 'Kahverengi' },
-                        { hex: '#d97706', name: 'Açık Kahverengi' },
-                        
-                        // Özel renkler
-                        { hex: '#7c2d12', name: 'Bordo' },
-                        { hex: '#4c1d95', name: 'İndigo' },
-                        { hex: '#701a75', name: 'Fuşya' },
-                        { hex: '#166534', name: 'Zümrüt Yeşili' }
-                    ]
-                }
-            },
-            computed: {
-                hasValues() {
-                    return Object.values(this.formValues).some(v => v && v.trim());
-                },
-                recommendedEmbeddedItem() {
-                    if (!this.fontAnalysis) return null;
-                    const rec = this.fontAnalysis.recommendations || {};
-                    const targetName = rec.primary_embedded;
-                    if (!targetName) return null;
-                    const list = this.fontAnalysis.available_fonts || [];
-                    return list.find(f => (f.source || '').includes('Embedded') && (f.name || '').toLowerCase().includes((targetName || '').toLowerCase())) || null;
-                }
-            },
-            methods: {
-                pickEmbeddedRecommended() {
-                    const item = this.recommendedEmbeddedItem;
-                    if (item) this.selectedFont = item.path;
-                },
-                usePerPlaceholderAuto() {
-                    // Clear global font selection; backend will auto-pick per placeholder from analysis
-                    this.selectedFont = '';
-                    // Optionally mark state; actual logic is on backend already using get_font_config_for_placeholder
-                    this.$nextTick(() => console.log('Per-placeholder auto font mode active'));
-                },
-                handleFileSelect(event) {
-                    const file = event.target.files[0];
-                    if (file) this.uploadFile(file);
-                },
-                
-                async uploadFile(file) {
-                    this.isLoading = true;
-                    this.errorMessage = '';
-                    this.successMessage = '';
-                    
-                    try {
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        
-                        const response = await axios.post(`${this.apiBase}/api/analyze`, formData, {
-                            headers: { 'Content-Type': 'multipart/form-data' }
-                        });
-                        
-                        if (response.data.success) {
-                            this.sessionId = response.data.session_id;
-                            this.placeholders = response.data.placeholders;
-                            this.successMessage = response.data.message;
-                            
-                            // Initialize form values
-                            this.formValues = {};
-                            this.textAlignments = {};  // Hizalama seçimlerini başlat
-                            this.alignmentOffsets = {}; // Manuel offset'leri başlat
-                            this.alignmentOffsetsY = {}; // Dikey offset'leri başlat
-                            this.perPlaceholderFontSizes = {}; // Placeholder bazında font boyutu başlat
-                            this.perPlaceholderStyles = {}; // Placeholder bazında stil başlat
-                            this.placeholders.forEach(p => {
-                                this.formValues[p.key] = '';
-                                this.textAlignments[p.key] = 'center';  // Varsayılan merkez hizalama
-                                this.alignmentOffsets[p.key] = 0;  // Varsayılan offset: 0
-                                this.alignmentOffsetsY[p.key] = 0; // Varsayılan dikey offset: 0
-                                this.perPlaceholderFontSizes[p.key] = undefined; // Varsayılan: boş (auto)
-                                this.perPlaceholderStyles[p.key] = '';
-                            });
-                            
-                            // Load preview
-                            this.previewUrl = `${this.apiBase}/api/preview/${this.sessionId}?cleaned=true&t=${Date.now()}`;
-                            
-                            // Load font analysis
-                            this.loadFontAnalysis();
-                            
-                        } else {
-                            this.errorMessage = response.data.message;
-                        }
-                        
-                    } catch (error) {
-                        console.error('Upload error:', error);
-                        this.errorMessage = '🎯 Analiz hatası: ' + (error.response?.data?.detail || error.message);
-                    } finally {
-                        this.isLoading = false;
-                    }
-                },
-                
-                async loadFontAnalysis() {
-                    if (!this.sessionId) return;
-                    
-                    try {
-                        const response = await axios.get(`${this.apiBase}/api/fonts/${this.sessionId}`);
-                        if (response.data.success) {
-                            this.fontAnalysis = response.data;
-                            console.log('Font Analysis:', this.fontAnalysis);
-                        }
-                    } catch (error) {
-                        console.warn('Font analysis failed:', error);
-                    }
-                },
-                
-                fillPerfectTurkish() {
-                    const perfectTurkish = {
-                        'Ad': 'Çağatay',
-                        'Soyad': 'Müşterioğlu',
-                        'İsim': 'Özgürcan',
-                        'Şehir': 'İstanbul',
-                        'Ülke': 'Türkiye',
-                        'Name': 'Gülşah',
-                        'Surname': 'Şahinoğlu',
-                        'Company': 'Çağrı Müşteri Hizmetleri',
-                        'Position': 'Yazılım Geliştirici'
+        <script>
+        (function(){
+            new Vue({
+                el: '#app',
+                data: function() {
+                    return {
+                        isDragOver: false,
+                        isLoading: false,
+                        sessionId: null,
+                        placeholders: [],
+                        formValues: {},
+                        textAlignments: {},
+                        alignmentOffsets: {},
+                        alignmentOffsetsY: {},
+                        successMessage: '',
+                        errorMessage: '',
+                        diagnostics: [],
+                        previewUrl: null,
+                        apiBase: (typeof window !== 'undefined' ? window.location.origin : ''),
+                        fontAnalysis: null,
+                        selectedFont: '',
+                        selectedColor: '#000000',
+                        fontSizeMode: 'auto',
+                        fixedFontSize: 12,
+                        minFontSize: 8,
+                        maxFontSize: 24,
+                        allowOverflow: false,
+                        perPlaceholderFontSizes: {},
+                        perPlaceholderStyles: {},
+                        globalStyle: 'normal',
+                        colorPresets: [
+                            { hex: '#000000', name: 'Siyah' },
+                            { hex: '#ffffff', name: 'Beyaz' },
+                            { hex: '#1f2937', name: 'Koyu Gri' },
+                            { hex: '#374151', name: 'Gri' },
+                            { hex: '#6b7280', name: 'Açık Gri' },
+                            { hex: '#9ca3af', name: 'Çok Açık Gri' },
+                            { hex: '#1e40af', name: 'Koyu Mavi' },
+                            { hex: '#0e7afe', name: 'Mavi' },
+                            { hex: '#3b82f6', name: 'Parlak Mavi' },
+                            { hex: '#60a5fa', name: 'Açık Mavi' },
+                            { hex: '#93c5fd', name: 'Çok Açık Mavi' },
+                            { hex: '#1e3a8a', name: 'Lacivert' },
+                            { hex: '#15803d', name: 'Koyu Yeşil' },
+                            { hex: '#059669', name: 'Yeşil' },
+                            { hex: '#22c55e', name: 'Parlak Yeşil' },
+                            { hex: '#10b981', name: 'Açık Yeşil' },
+                            { hex: '#34d399', name: 'Çok Açık Yeşil' },
+                            { hex: '#065f46', name: 'Orman Yeşili' },
+                            { hex: '#991b1b', name: 'Koyu Kırmızı' },
+                            { hex: '#dc2626', name: 'Kırmızı' },
+                            { hex: '#ef4444', name: 'Parlak Kırmızı' },
+                            { hex: '#f87171', name: 'Açık Kırmızı' },
+                            { hex: '#fca5a5', name: 'Çok Açık Kırmızı' },
+                            { hex: '#581c87', name: 'Koyu Mor' },
+                            { hex: '#7c3aed', name: 'Mor' },
+                            { hex: '#8b5cf6', name: 'Açık Mor' },
+                            { hex: '#a78bfa', name: 'Çok Açık Mor' },
+                            { hex: '#c084fc', name: 'Lila' },
+                            { hex: '#c2410c', name: 'Koyu Turuncu' },
+                            { hex: '#ea580c', name: 'Turuncu' },
+                            { hex: '#f97316', name: 'Parlak Turuncu' },
+                            { hex: '#fb923c', name: 'Açık Turuncu' },
+                            { hex: '#a16207', name: 'Koyu Sarı' },
+                            { hex: '#ca8a04', name: 'Sarı' },
+                            { hex: '#eab308', name: 'Parlak Sarı' },
+                            { hex: '#facc15', name: 'Açık Sarı' },
+                            { hex: '#fde047', name: 'Çok Açık Sarı' },
+                            { hex: '#be185d', name: 'Koyu Pembe' },
+                            { hex: '#db2777', name: 'Pembe' },
+                            { hex: '#ec4899', name: 'Parlak Pembe' },
+                            { hex: '#f472b6', name: 'Açık Pembe' },
+                            { hex: '#0d9488', name: 'Teal' },
+                            { hex: '#14b8a6', name: 'Parlak Teal' },
+                            { hex: '#06b6d4', name: 'Cyan' },
+                            { hex: '#0891b2', name: 'Koyu Cyan' },
+                            { hex: '#92400e', name: 'Koyu Kahverengi' },
+                            { hex: '#a3621b', name: 'Kahverengi' },
+                            { hex: '#d97706', name: 'Açık Kahverengi' },
+                            { hex: '#7c2d12', name: 'Bordo' },
+                            { hex: '#4c1d95', name: 'İndigo' },
+                            { hex: '#701a75', name: 'Fuşya' },
+                            { hex: '#166534', name: 'Zümrüt Yeşili' }
+                        ]
                     };
-                    
-                    this.placeholders.forEach(p => {
-                        if (perfectTurkish[p.key]) {
-                            this.formValues[p.key] = perfectTurkish[p.key];
-                        } else {
-                            this.formValues[p.key] = `Perfect_${p.key}_İşığı_Çağrı`;
-                        }
-                    });
                 },
-                
-                async fillPdf() {
-                    if (!this.hasValues) return;
-                    
-                    this.isLoading = true;
-                    this.errorMessage = '';
-                    this.successMessage = '';
-                    
-                    try {
-                        // Hex rengi RGB değerine çevir (0-1 arasında)
-                        const hexToRgb = (hex) => {
-                            const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-                            return result ? [
-                                parseInt(result[1], 16) / 255,
-                                parseInt(result[2], 16) / 255,
-                                parseInt(result[3], 16) / 255
-                            ] : [0, 0, 0];
+                computed: {
+                    hasValues: function() {
+                        try {
+                            for (var k in this.formValues) {
+                                if (!Object.prototype.hasOwnProperty.call(this.formValues, k)) continue;
+                                var v = this.formValues[k];
+                                if (v && String(v).trim()) return true;
+                            }
+                            return false;
+                        } catch (e) { return false; }
+                    },
+                    recommendedEmbeddedItem: function() {
+                        try {
+                            if (!this.fontAnalysis) return null;
+                            var rec = this.fontAnalysis.recommendations || {};
+                            var targetName = rec.primary_embedded;
+                            if (!targetName) return null;
+                            var list = this.fontAnalysis.available_fonts || [];
+                            var tn = String(targetName).toLowerCase();
+                            for (var i = 0; i < list.length; i++) {
+                                var f = list[i] || {};
+                                var src = String(f.source || '');
+                                var nm = String(f.name || '').toLowerCase();
+                                if (src.indexOf('Embedded') >= 0 && nm.indexOf(tn) >= 0) return f;
+                            }
+                            return null;
+                        } catch (e) { return null; }
+                    }
+                },
+                methods: {
+                    getColorName: function(hex) {
+                        try {
+                            var list = this.colorPresets || [];
+                            for (var i = 0; i < list.length; i++) {
+                                var it = list[i];
+                                if (it && it.hex === hex) return it.name || 'Özel renk';
+                            }
+                            return 'Özel renk';
+                        } catch (e) { return 'Özel renk'; }
+                    },
+                    fsDisplay: function(val) {
+                        var n = Number(val);
+                        return isFinite(n) ? n.toFixed(1) : val;
+                    },
+                    getErrorDetail: function(error) {
+                        try {
+                            if (error && error.response && error.response.data) {
+                                return error.response.data.detail || error.response.data.message || error.message || 'Bilinmeyen hata';
+                            }
+                            return (error && error.message) ? error.message : 'Bilinmeyen hata';
+                        } catch (e) { return 'Bilinmeyen hata'; }
+                    },
+                    pickEmbeddedRecommended: function() {
+                        try {
+                            var item = this.recommendedEmbeddedItem;
+                            if (item) this.selectedFont = item.path;
+                        } catch (e) {}
+                    },
+                    usePerPlaceholderAuto: function() {
+                        this.selectedFont = '';
+                        var self = this;
+                        this.$nextTick(function(){ console.log('Per-placeholder auto font mode active'); });
+                    },
+                    handleFileSelect: function(event) {
+                        var file = event && event.target && event.target.files ? event.target.files[0] : null;
+                        if (file) this.uploadFile(file);
+                    },
+                    uploadFile: function(file) {
+                        var self = this;
+                        self.isLoading = true;
+                        self.errorMessage = '';
+                        self.successMessage = '';
+                        try {
+                            var formData = new FormData();
+                            formData.append('file', file);
+                            axios.post(self.apiBase + '/api/analyze', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+                                .then(function(response){
+                                    response = response || { data: {} };
+                                    var data = response.data || {};
+                                    if (data.success) {
+                                        self.sessionId = data.session_id;
+                                        self.placeholders = data.placeholders || [];
+                                        self.successMessage = data.message || '';
+                                        // Build fresh objects to keep Vue 2 reactivity intact
+                                        var fv = {}, ta = {}, off = {}, offY = {}, pfs = {}, pst = {};
+                                        for (var i = 0; i < self.placeholders.length; i++) {
+                                            var p = self.placeholders[i];
+                                            fv[p.key] = '';
+                                            ta[p.key] = 'center';
+                                            off[p.key] = 0;
+                                            offY[p.key] = 0;
+                                            pfs[p.key] = undefined;
+                                            pst[p.key] = '';
+                                        }
+                                        self.formValues = fv;
+                                        self.textAlignments = ta;
+                                        self.alignmentOffsets = off;
+                                        self.alignmentOffsetsY = offY;
+                                        self.perPlaceholderFontSizes = pfs;
+                                        self.perPlaceholderStyles = pst;
+                                        self.previewUrl = self.apiBase + '/api/preview/' + self.sessionId + '?cleaned=true&t=' + Date.now();
+                                        self.loadFontAnalysis();
+                                    } else {
+                                        self.errorMessage = data.message || 'Analiz başarısız';
+                                    }
+                                })
+                                .catch(function(error){
+                                    console.error('Upload error:', error);
+                                    self.errorMessage = '🎯 Analiz hatası: ' + self.getErrorDetail(error);
+                                })
+                                .then(function(){ self.isLoading = false; });
+                        } catch (err) {
+                            console.error('Upload error (outer):', err);
+                            self.errorMessage = '🎯 Analiz hatası: ' + self.getErrorDetail(err);
+                            self.isLoading = false;
+                        }
+                    },
+                    loadFontAnalysis: function() {
+                        var self = this;
+                        if (!self.sessionId) return;
+                        try {
+                            axios.get(self.apiBase + '/api/fonts/' + self.sessionId)
+                                .then(function(response){
+                                    response = response || { data: {} };
+                                    var data = response.data || {};
+                                    if (data.success) self.fontAnalysis = data;
+                                })
+                                .catch(function(error){ console.warn('Font analysis failed:', error); });
+                        } catch (e) { console.warn('Font analysis failed (outer):', e); }
+                    },
+                    fillPerfectTurkish: function() {
+                        var perfectTurkish = {
+                            'Soyad': 'Müşterioğlu',
+                            'İsim': 'Özgürcan',
+                            'Şehir': 'İstanbul',
+                            'Ülke': 'Türkiye',
+                            'Name': 'Gülşah',
+                            'Surname': 'Şahinoğlu',
+                            'Company': 'Çağrı Müşteri Hizmetleri'
                         };
-                        
-                        const textRgb = hexToRgb(this.selectedColor);
-                        const cleanedSizes = {};
-                        for (const [k, v] of Object.entries(this.perPlaceholderFontSizes || {})) {
-                            if (v !== undefined && v !== null && !Number.isNaN(v)) cleanedSizes[k] = v;
+                        for (var i = 0; i < this.placeholders.length; i++) {
+                            var p = this.placeholders[i];
+                            var val = perfectTurkish[p.key] ? perfectTurkish[p.key] : ('Perfect_' + p.key + '_Işığı_Çağrı');
+                            // Ensure reactivity if keys were not present
+                            if (Object.prototype.hasOwnProperty.call(this.formValues, p.key)) {
+                                this.formValues[p.key] = val;
+                            } else if (this.$set) {
+                                this.$set(this.formValues, p.key, val);
+                            } else {
+                                this.formValues[p.key] = val;
+                            }
                         }
-                        
-                        const response = await axios.post(`${this.apiBase}/api/fill`, {
-                            session_id: this.sessionId,
-                            values: this.formValues,
-                            font_choice: this.selectedFont,
+                    },
+                    fillPdf: function() {
+                        var self = this;
+                        self.isLoading = true;
+                        self.errorMessage = '';
+                        self.successMessage = '';
+                        function hexToRgb(hex) {
+                            var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                            if (!m) return [0,0,0];
+                            return [ parseInt(m[1],16)/255, parseInt(m[2],16)/255, parseInt(m[3],16)/255 ];
+                        }
+                        var textRgb = hexToRgb(self.selectedColor);
+                        var cleaned = {};
+                        var sizes = self.perPlaceholderFontSizes || {};
+                        for (var k in sizes) {
+                            if (!Object.prototype.hasOwnProperty.call(sizes, k)) continue;
+                            var v = sizes[k];
+                            if (v !== undefined && v !== null && !isNaN(v)) cleaned[k] = v;
+                        }
+                        axios.post(self.apiBase + '/api/fill', {
+                            session_id: self.sessionId,
+                            values: self.formValues,
+                            font_choice: self.selectedFont,
                             text_color: textRgb,
-                            font_size_mode: this.fontSizeMode,
-                            fixed_font_size: this.fontSizeMode === 'fixed' ? this.fixedFontSize : null,
-                            min_font_size: this.fontSizeMode === 'min_max' ? this.minFontSize : null,
-                            max_font_size: this.fontSizeMode === 'min_max' ? this.maxFontSize : null,
-                            allow_overflow: this.allowOverflow,
-                            text_alignments: this.textAlignments,  // Hizalama seçimlerini gönder
-                            alignment_offsets: this.alignmentOffsets,  // Manuel offset değerlerini gönder
-                            alignment_offsets_y: this.alignmentOffsetsY, // Dikey offset değerleri
-                            per_placeholder_font_sizes: cleanedSizes,
-                            font_style: this.globalStyle,
-                            per_placeholder_styles: this.perPlaceholderStyles
-                        });
-                        
-                        if (response.data.success) {
-                            this.successMessage = response.data.message + ` • Renk: ${this.selectedColor}`;
-                            this.diagnostics = response.data.diagnostics || [];
-                            
-                            // Download the perfect PDF
-                            window.open(`${this.apiBase}/api/download/${this.sessionId}`, '_blank');
-                            
-                        } else {
-                            this.errorMessage = '🎯 Doldurma hatası';
-                        }
-                        
-                    } catch (error) {
-                        console.error('Fill error:', error);
-                        this.errorMessage = '🎯 Doldurma hatası: ' + (error.response?.data?.detail || error.message);
-                    } finally {
-                        this.isLoading = false;
+                            font_size_mode: self.fontSizeMode,
+                            fixed_font_size: self.fontSizeMode === 'fixed' ? self.fixedFontSize : null,
+                            min_font_size: self.fontSizeMode === 'min_max' ? self.minFontSize : null,
+                            max_font_size: self.fontSizeMode === 'min_max' ? self.maxFontSize : null,
+                            allow_overflow: self.allowOverflow,
+                            text_alignments: self.textAlignments,
+                            alignment_offsets: self.alignmentOffsets,
+                            alignment_offsets_y: self.alignmentOffsetsY,
+                            per_placeholder_font_sizes: cleaned,
+                            font_style: self.globalStyle,
+                            per_placeholder_styles: self.perPlaceholderStyles
+                        }).then(function(response){
+                            response = response || { data: {} };
+                            var data = response.data || {};
+                            if (data.success) {
+                                self.successMessage = (data.message || 'Başarılı') + ' • Renk: ' + self.selectedColor;
+                                self.diagnostics = data.diagnostics || [];
+                                window.open(self.apiBase + '/api/download/' + self.sessionId, '_blank');
+                            } else {
+                                self.errorMessage = '🎯 Doldurma hatası';
+                            }
+                        }).catch(function(error){
+                            console.error('Fill error:', error);
+                            self.errorMessage = '🎯 Doldurma hatası: ' + self.getErrorDetail(error);
+                        }).then(function(){ self.isLoading = false; });
                     }
                 }
-            }
-        }).mount('#app');
-    </script>
+            });
+        })();
+        </script>
 </body>
 </html>
-        """
-        return HTMLResponse(content=html_content)
+            """
+            return HTMLResponse(content=html_content)
     except Exception as e:
         return JSONResponse({"message": "Perfect System Running", "port": 8010, "error": str(e)})
 

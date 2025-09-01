@@ -1,3 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.egg-info/
+
+# VS Code
+.vscode/
+
+# OS
+Thumbs.db
+*.DS_Store
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+
+# Project outputs
+ai_sessions/
+clean_sessions/
+debug_sessions/
+perfect_sessions/
+sessions/
+simple_sessions/
+logs/
+
+# Node
+node_modules/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

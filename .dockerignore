@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.egg-info/
+
+# VCS
+.git/
+.gitignore
+
+# OS
+*.DS_Store
+
+# Build/cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Project large folders
+ai_sessions/
+clean_sessions/
+debug_sessions/
+perfect_sessions/
+sessions/
+simple_sessions/
+logs/
+
+# Node-related (if any)
+node_modules/
+# Exclude everything by default
+**
+
+# Include only what's needed for the container
+!Dockerfile
+!requirements.txt
+!pyproject.toml
+!README.md
+!render.yaml
+!perfect_system.py
+!fonts/**
+
+# Keep runtime session dirs structure (created at runtime if missing)
+!perfect_sessions/
+!.git/
