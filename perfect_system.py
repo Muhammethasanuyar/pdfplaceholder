@@ -109,12 +109,28 @@ def register_tr_font(doc: fitz.Document) -> str:
     print("MANUAL font registration starting...")
     print(f"PyMuPDF version: {getattr(fitz, '__version__', 'unknown')}")
 
+    # Start with preferred well-known fonts
+    seen = set()
     candidates = [
         FONTS_DIR / "DejaVuSans.ttf",
         FONTS_DIR / "NotoSans-Regular.ttf",
         FONTS_DIR / "Roboto-Regular.ttf",
         FONTS_DIR / "OpenSans-Regular.ttf",
     ]
+    # Then add any other .ttf/.otf in fonts directory (including subfolders)
+    try:
+        for fp in FONTS_DIR.glob("**/*"):
+            if not fp.suffix.lower() in (".ttf", ".otf"):
+                continue
+            if fp in candidates:
+                continue
+            key = str(fp.resolve()).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(fp)
+    except Exception:
+        pass
 
     for path in candidates:
         if not path.exists():
@@ -652,17 +668,33 @@ def get_font_config_for_placeholder(font_analysis: Dict[str, Any], placeholder: 
             print(f"Using primary embedded font: {config['original_name']}")
             return config
     
-    # 4. Fallback: Yerel TTF
-    for ttf_path in [FONTS_DIR / "DejaVuSans.ttf", FONTS_DIR / "NotoSans-Regular.ttf"]:
-        if ttf_path.exists():
+    # 4. Fallback: Yerel TTF/OTF (prefer DejaVuSans if present)
+    preferred = [FONTS_DIR / "DejaVuSans.ttf", FONTS_DIR / "NotoSans-Regular.ttf"]
+    for p in preferred:
+        if p.exists():
             config = {
-                "fontfile": str(ttf_path),
+                "fontfile": str(p),
                 "fontname": "embedded",
                 "source": "local_ttf",
-                "original_name": ttf_path.stem
+                "original_name": p.stem
             }
             print(f"Using local TTF fallback: {config['original_name']}")
             return config
+    try:
+        for fp in FONTS_DIR.glob("**/*"):
+            if fp.suffix.lower() not in (".ttf", ".otf"):
+                continue
+            if fp.exists():
+                config = {
+                    "fontfile": str(fp),
+                    "fontname": "embedded",
+                    "source": "local_ttf",
+                    "original_name": fp.stem
+                }
+                print(f"Using local font fallback: {config['original_name']}")
+                return config
+    except Exception:
+        pass
     
     print(f"No suitable font found, using system default")
     return config
@@ -2392,38 +2424,29 @@ async def get_font_analysis(session_id: str):
                 "page": f.get("page", 1)
             })
     
-    # Yerel TTF fontları - Tüm yeni fontları dahil et
-    local_fonts = [
-        {"file": "DejaVuSans.ttf", "name": "DejaVu Sans"},
-        {"file": "NotoSans-Regular.ttf", "name": "Noto Sans"},
-        {"file": "OpenSans-Regular.ttf", "name": "Open Sans"},
-        {"file": "OpenSans-SemiBold.ttf", "name": "Open Sans SemiBold"},
-        {"file": "Roboto-Regular.ttf", "name": "Roboto"},
-        {"file": "Ubuntu-Regular.ttf", "name": "Ubuntu"},
-        {"file": "PTSans-Regular.ttf", "name": "PT Sans"},
-        {"file": "BebasNeue-Regular.ttf", "name": "Bebas Neue"},
-        {"file": "Anton-Regular.ttf", "name": "Anton"},
-        {"file": "Gravity-Regular.otf", "name": "Gravity Regular"},
-        {"file": "Gravity-Bold.otf", "name": "Gravity Bold"},
-        {"file": "Amble-Regular.ttf", "name": "Amble Regular"},
-        {"file": "Amble-Bold.ttf", "name": "Amble Bold"},
-        {"file": "CaviarDreams.ttf", "name": "Caviar Dreams"},
-        {"file": "LemonMilklight.otf", "name": "Lemon Milk Light"},
-        {"file": "Akrobat-Regular.otf", "name": "Akrobat"},
-        {"file": "TTimesb.ttf", "name": "Times Bold"}
-    ]
-    
-    for lf in local_fonts:
-        font_path = FONTS_DIR / lf["file"]
-        if font_path.exists():
+    # Yerel TTF/OTF fontlarını otomatik tara (eklenen yeni fontlar dahil)
+    def _pretty_font_name(stem: str) -> str:
+        try:
+            s = stem.replace("_", " ").replace("-", " ")
+            return s.strip().title()
+        except Exception:
+            return stem
+    try:
+        for fp in FONTS_DIR.glob("**/*"):
+            if fp.suffix.lower() not in (".ttf", ".otf"):
+                continue
+            if not fp.exists():
+                continue
             available_fonts.append({
-                "id": f"local_{lf['file']}",
-                "name": lf["name"],
-                "path": str(font_path),
-                "source": "Yerel TTF",
-                "type": "TrueType",
+                "id": f"local_{fp.name}",
+                "name": _pretty_font_name(fp.stem),
+                "path": str(fp),
+                "source": "Yerel Font",
+                "type": "OpenType" if fp.suffix.lower() == ".otf" else "TrueType",
                 "page": "Tüm"
             })
+    except Exception:
+        pass
     
     return JSONResponse({
         "success": True,
@@ -2471,6 +2494,55 @@ async def serve_perfect_frontend():
     <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <style>
+        :root {
+            /* Light theme (default) */
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --header-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            --text-primary: #2d3748;
+            --text-secondary: #4a5568;
+            --border-color: #e2e8f0;
+            --input-bg: #ffffff;
+            --input-border: #cbd5e0;
+            --input-focus: #4299e1;
+            --button-primary: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            --button-success: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            --button-hover: rgba(0, 0, 0, 0.05);
+            --feature-badge-bg: rgba(255, 255, 255, 0.2);
+            --preview-bg: #f7fafc;
+            --info-panel-bg: #f0f9ff;
+            --info-panel-border: #bae6fd;
+            --success-bg: #f0fff4;
+            --success-border: #9ae6b4;
+            --error-bg: #fed7d7;
+            --error-border: #feb2b2;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+            --header-gradient: linear-gradient(135deg, #0f1419 0%, #1a202c 100%);
+            --card-bg: rgba(45, 55, 72, 0.95);
+            --card-shadow: 0 15px 35px rgba(0,0,0,0.3);
+            --text-primary: #f7fafc;
+            --text-secondary: #e2e8f0;
+            --border-color: #4a5568;
+            --input-bg: #2d3748;
+            --input-border: #4a5568;
+            --input-focus: #63b3ed;
+            --button-primary: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+            --button-success: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+            --button-hover: rgba(255, 255, 255, 0.1);
+            --feature-badge-bg: rgba(255, 255, 255, 0.1);
+            --preview-bg: #1a202c;
+            --info-panel-bg: #2d3748;
+            --info-panel-border: #4a5568;
+            --success-bg: #1a202c;
+            --success-border: #38a169;
+            --error-bg: #2d3748;
+            --error-border: #fc8181;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -2479,9 +2551,11 @@ async def serve_perfect_frontend():
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-gradient);
             min-height: 100vh;
             line-height: 1.6;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
         }
         
         .app-container {
@@ -2491,13 +2565,34 @@ async def serve_perfect_frontend():
         }
         
         .header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: var(--header-gradient);
             color: white;
             padding: 3rem;
             border-radius: 25px;
             margin-bottom: 2rem;
             text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            box-shadow: var(--card-shadow);
+            position: relative;
+        }
+        
+        .theme-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
         }
         
         .header h1 {
@@ -2521,7 +2616,7 @@ async def serve_perfect_frontend():
         }
         
         .feature-badge {
-            background: rgba(255, 255, 255, 0.2);
+            background: var(--feature-badge-bg);
             padding: 0.75rem 1.5rem;
             border-radius: 50px;
             font-weight: 600;
@@ -2531,23 +2626,23 @@ async def serve_perfect_frontend():
         }
         
         .main-content {
-            background: white;
+            background: var(--card-bg);
             border-radius: 25px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            box-shadow: var(--card-shadow);
             overflow: hidden;
         }
         
         .upload-section {
             padding: 4rem;
             text-align: center;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: var(--preview-bg);
         }
         
         .upload-area {
-            border: 3px dashed #2a5298;
+            border: 3px dashed var(--input-focus);
             border-radius: 20px;
             padding: 4rem;
-            background: white;
+            background: var(--card-bg);
             transition: all 0.3s ease;
             cursor: pointer;
             position: relative;
@@ -2622,10 +2717,10 @@ async def serve_perfect_frontend():
         }
         
         .placeholder-form {
-            background: white;
+            background: var(--card-bg);
             padding: 2.5rem;
             border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            box-shadow: var(--card-shadow);
             max-height: 70vh;
             overflow-y: auto;
         }
@@ -2654,9 +2749,9 @@ async def serve_perfect_frontend():
         
         .form-group input:focus {
             outline: none;
-            border-color: #2a5298;
-            background: white;
-            box-shadow: 0 0 0 4px rgba(42, 82, 152, 0.1);
+            border-color: var(--input-focus);
+            background: var(--input-bg);
+            box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.1);
             transform: translateY(-2px);
         }
         
@@ -2909,11 +3004,12 @@ async def serve_perfect_frontend():
         }
         
         .info-panel {
-            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            background: var(--info-panel-bg);
             padding: 1.5rem;
             border-radius: 15px;
             margin-top: 1.5rem;
-            border-left: 5px solid #2196f3;
+            border-left: 5px solid var(--info-panel-border);
+            color: var(--text-secondary);
         }
         
         .file-input {
@@ -2958,6 +3054,9 @@ async def serve_perfect_frontend():
     <div id="app" class="app-container">
         <!-- Header Section -->
         <div class="header">
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">
+                🌙 Koyu Tema
+            </button>
             <h1> PDF Placeholder Sistemi</h1>
            
             <div class="feature-badges">
@@ -3668,6 +3767,36 @@ async def serve_perfect_frontend():
                 }
             });
         })();
+        
+        // Theme toggle functionality
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            const toggleBtn = document.getElementById('themeToggle');
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            if (newTheme === 'dark') {
+                toggleBtn.textContent = '☀️ Açık Tema';
+            } else {
+                toggleBtn.textContent = '🌙 Koyu Tema';
+            }
+        }
+        
+        // Load saved theme on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const toggleBtn = document.getElementById('themeToggle');
+            
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            
+            if (savedTheme === 'dark') {
+                toggleBtn.textContent = '☀️ Açık Tema';
+            } else {
+                toggleBtn.textContent = '🌙 Koyu Tema';
+            }
+        });
         </script>
 </body>
 </html>
